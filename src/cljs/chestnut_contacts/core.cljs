@@ -1,22 +1,27 @@
 (ns chestnut-contacts.core
+  (:require-macros
+   [cljs.core.async.macros :as asyncm :refer (go go-loop)])
+
   (:require [om.core :as om :include-macros true]
-            [om.dom :as dom :include-macros true]))
+            [om.dom :as dom :include-macros true]
+            [cljs.core.async :as async :refer (<! >! put! chan)]
+            [taoensso.sente  :as sente :refer (cb-success?)]
+            ))
 
 (enable-console-print!)
 
+(let [{:keys [chsk ch-recv send-fn state]}
+      (sente/make-channel-socket! "/chsk" ; Note the same path as before
+                                  {:type :auto ; e/o #{:auto :ajax :ws}
+                                   })]
+  (def chsk       chsk)
+  (def ch-chsk    ch-recv) ; ChannelSocket's receive channel
+  (def chsk-send! send-fn) ; ChannelSocket's send API fn
+  (def chsk-state state)   ; Watchable, read-only atom
+  )
+
 (defonce app-state (atom {:text "Hello Chestnut!"
-                          :contacts [{:id 0
-                                      :name "Mike"
-                                      :email "mike@email.com"}
-                                     {:id 1
-                                      :name "Jim"
-                                      :email "jim@email.com"}
-                                     {:id 2
-                                      :name "Jane"
-                                      :email "jane@email.com"}
-                                     {:id 3
-                                      :name "Tom"
-                                      :email "tom@email.com"}]}))
+                          :contacts []}))
 
 (defn contacts []
   (om/ref-cursor (:contacts (om/root-cursor app-state))))
@@ -60,7 +65,6 @@
                                    (om/set-state! owner :temp-value (state-key state))
                                    (om/set-state! owner :editable true))
                         :style #js {:textDecoration "underline"
-                                    :color "red"
                                     :cursor "pointer"}}
                    (state-key state)))))))
 
@@ -79,7 +83,20 @@
 (defn contacts-list-view [contacts owner]
   (om/component
    (dom/div nil
-            (om/build-all contact-view contacts))))
+            (om/build-all contact-view contacts)
+            (dom/button #js {:onClick (fn [e]
+                                        (chsk-send! [:contacts/fetch nil]
+                                                    1000
+                                                    (fn [response]
+                                                      (println "CALLBACK")
+                                                      (if (= response :chsk/timeout)
+                                                        (println "SERVER DIDN'T RESPONDE IN TIME.")
+                                                        (do
+                                                          (om/transact! contacts
+                                                                        (fn [_]
+                                                                          response)))
+                                                        ))))}
+                        "Fetch contacts"))))
 
 (defn app-view [state owner]
   (om/component

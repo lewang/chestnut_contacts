@@ -17,7 +17,9 @@
                  [compojure "1.4.0"]
                  [enlive "1.1.6"]
                  [org.omcljs/om "0.9.0"]
-                 [environ "1.0.0"]]
+                 [environ "1.0.0"]
+                 [http-kit "2.1.19"]
+                 [com.taoensso/sente "1.6.0"]]
 
   :plugins [[lein-cljsbuild "1.0.5"]
             [lein-environ "1.0.0"]]
