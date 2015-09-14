@@ -4,14 +4,90 @@
 
 (enable-console-print!)
 
-(defonce app-state (atom {:text "Hello Chestnut!"}))
+(defonce app-state (atom {:text "Hello Chestnut!"
+                          :contacts [{:id 0
+                                      :name "Mike"
+                                      :email "mike@email.com"}
+                                     {:id 1
+                                      :name "Jim"
+                                      :email "jim@email.com"}
+                                     {:id 2
+                                      :name "Jane"
+                                      :email "jane@email.com"}
+                                     {:id 3
+                                      :name "Tom"
+                                      :email "tom@email.com"}]}))
+
+(defn contacts []
+  (om/ref-cursor (:contacts (om/root-cursor app-state))))
+
+(defn editable-text-view [state owner {:keys [state-key]}]
+  (reify
+    om/IInitState
+    (init-state [_]
+      {:editable false
+       :temp-value nil})
+    om/IDidUpdate
+    (did-update [_ _ {:keys [editable]}]
+      (when (and (not editable)
+                 (om/get-state owner :editable))
+        (let [node (om/get-node owner)]
+          (.focus node)
+          (.setSelectionRange node 0 (count (state-key state))))))
+
+    om/IRenderState
+    (render-state [_ {:keys [editable temp-value]}]
+      (let [on-blur (fn []
+                      (om/set-state! owner :editable false))
+            commit (fn []
+                   (om/update! state state-key temp-value)
+                   (om/set-state! owner :editable false))
+            on-change (fn [e]
+                        (om/set-state! owner :temp-value (.. e -target -value)))
+            on-key-down (fn [e]
+                          (let [key (.-key e)]
+                            (case key
+                              "Escape" (on-blur)
+                              "Enter" (commit)
+                              nil)))
+            ]
+        (if editable
+          (dom/input #js {:value temp-value
+                          :onChange on-change
+                          :onKeyDown on-key-down
+                          :onBlur on-blur})
+          (dom/div #js {:onClick (fn [_]
+                                   (om/set-state! owner :temp-value (state-key state))
+                                   (om/set-state! owner :editable true))
+                        :style #js {:textDecoration "underline"
+                                    :color "red"
+                                    :cursor "pointer"}}
+                   (state-key state)))))))
+
+(defn contact-view [contact owner]
+  (om/component
+   (dom/div nil
+            (om/build editable-text-view contact {:opts {:state-key :name}})
+            (om/build editable-text-view contact {:opts {:state-key :email}})
+            (dom/button #js {:onClick (fn [_]
+                                        (om/transact! (contacts)
+                                                      (fn [cs]
+                                                        (vec (remove #(= (:id %) (:id contact))
+                                                                     cs)))))}
+                        "delete"))))
+
+(defn contacts-list-view [contacts owner]
+  (om/component
+   (dom/div nil
+            (om/build-all contact-view contacts))))
+
+(defn app-view [state owner]
+  (om/component
+   (dom/div nil
+            (om/build contacts-list-view (:contacts state)))))
 
 (defn main []
   (om/root
-    (fn [app owner]
-      (reify
-        om/IRender
-        (render [_]
-          (dom/h1 nil (:text app)))))
-    app-state
-    {:target (. js/document (getElementById "app"))}))
+   app-view
+   app-state
+   {:target (. js/document (getElementById "app"))}))
